@@ -2923,20 +2923,27 @@ function classifySentiment_(text) {
 }
 
 // ════════════════════════════════════════════════════════════
-// OPERATIONS → FIFO
+// OPERATIONS → FIFO  (MATAN INSTANCE — extended engine)
 // Reads the "פעולות" sheet from the spreadsheet specified in
-// Script Property OPERATIONS_SPREADSHEET_ID (defaults to the
-// active spreadsheet). Builds closed trades + open positions.
+// Script Property OPERATIONS_SPREADSHEET_ID (defaults to Matan's own
+// spreadsheet — see fallback ID below, isolated from Idan's production).
+// Builds closed trades + open positions, both long and short, stocks and
+// options. See docs/TECHNICAL_DEBT.md "Matan bank-import mapping" for the
+// full mapping rationale.
 //
-// Sheet columns (row 1 = headers, data starts row 2):
-//   A = תאריך   B = סימבול   C = פעולה (BUY/SELL)
-//   D = כמות    E = מחיר ליחידה   F = עמלה (optional)
-//   G = הערות (optional)
+// Matan's actual sheet columns (row 1 is a stale/mismatched header, row 2
+// is a second stale header row, real data starts row 3):
+//   A = תאריך (MM/DD/YYYY HH:MM:SS EDT|EST)   B = סימבול
+//   C = פעולה (BUY / SEL / SS / BC — mapped to BUY/SELL/SHORT_OPEN/SHORT_CLOSE)
+//   D = כמות   E = מחיר ליחידה
+//   F = שווי (NOT commission — ignored)   G = רווח&הפסד (NOT notes — ignored)
 // ════════════════════════════════════════════════════════════
 
 function getOperationsSpreadsheet_() {
   const props   = PropertiesService.getScriptProperties();
-  const sheetId = props.getProperty('OPERATIONS_SPREADSHEET_ID') || '14e80gt0rcc4DwH1j458kAT1Tz11s-4N8MlWSthF8v9g';
+  // Fallback ID here is MATAN'S sheet — this file is a separate, isolated
+  // copy (fifo-matan) and must never point at Idan's production sheet ID.
+  const sheetId = props.getProperty('OPERATIONS_SPREADSHEET_ID') || '1s5ak-jzx1NOQ9xFtII2QNRnWhKzSu4jX15_knx7RFdU';
   try {
     return SpreadsheetApp.openById(sheetId);
   } catch(e) {
@@ -2955,34 +2962,14 @@ function handleGetOperations_(token) {
     if (!sh) return jsonOut_({ ok: false, error: 'לשונית "פעולות" לא נמצאה' });
 
     const data = sh.getDataRange().getValues();
-    if (data.length < 2) return jsonOut_({ ok: true, trades: [], positions: [] });
+    if (data.length < 2) return jsonOut_({ ok: true, trades: [], positions: [], errors: [] });
 
-    // Parse rows (skip header row 1)
-    const ops = [];
-    for (var i = 1; i < data.length; i++) {
-      const row = data[i];
-      const dateVal    = row[0];
-      const symbol     = String(row[1] || '').trim().toUpperCase();
-      const action     = String(row[2] || '').trim().toUpperCase();
-      const qty        = parseFloat(row[3]) || 0;
-      const price      = parseFloat(row[4]) || 0;
-      const commission = parseFloat(row[5]) || 0;
-      const notes      = String(row[6] || '').trim();
+    // Normalize (BUY/SEL/SS/BC → canonical actions, option detection,
+    // explicit date parsing) — never silently drops a row: every row lands
+    // in exactly one of ops/errors/skipped. See normalizeOperations_.
+    var norm = normalizeOperations_(data);
 
-      if (!symbol || !action || qty <= 0 || price <= 0) continue;
-      if (action !== 'BUY' && action !== 'SELL') continue;
-
-      var date;
-      if (dateVal instanceof Date) {
-        date = dateVal;
-      } else {
-        date = new Date(dateVal);
-        if (isNaN(date.getTime())) continue;
-      }
-      ops.push({ date: date, symbol: symbol, action: action, qty: qty, price: price, commission: commission, notes: notes });
-    }
-
-    var result = applyFIFO_(ops);
+    var result = applyFIFO_(norm.ops);
     mergePositionMeta_(result.positions);
     mergeTradeMeta_(result.trades);
 
@@ -2992,7 +2979,17 @@ function handleGetOperations_(token) {
       result.positions = [];
     }
 
-    return jsonOut_({ ok: true, trades: result.trades, positions: result.positions });
+    // errors = rows that could not be parsed/matched at all (bad data or a
+    // SELL/BC exceeding the available open lot) — surfaced to the frontend
+    // instead of vanishing silently. skippedCount = rows intentionally
+    // ignored (blank rows, the sheet's stray second header row).
+    return jsonOut_({
+      ok: true,
+      trades: result.trades,
+      positions: result.positions,
+      errors: norm.errors.concat(result.errors),
+      skippedCount: norm.skipped.length
+    });
   } catch (err) {
     return jsonOut_({ ok: false, error: err.message });
   }
@@ -3002,15 +2999,19 @@ function handleGetOperations_(token) {
 // target/stop_loss/notes blank — those fields aren't part of the raw "פעולות"
 // transactions log, they're annotations the trader adds separately via the
 // position edit modal. This overlays them from the legacy Positions sheet,
-// matched by symbol (see handleUpsertPositionMeta_ for the write side).
+// matched by symbol+side (see handleUpsertPositionMeta_ for the write side).
+// Keyed by symbol+side, not symbol alone — a long and a short position on
+// the same symbol are different positions and must not share one meta row.
+// Legacy rows with no `side` column default to 'long' (safe: this instance
+// has no pre-existing Positions-sheet data to migrate).
 function mergePositionMeta_(positions) {
   const sh = getSheet_('Positions');
   ensureHeaders_(sh, POSITION_HEADERS);
   const { rows } = readRows_(sh);
-  const bySymbol = {};
-  rows.forEach(r => { bySymbol[String(r.symbol).toUpperCase()] = r; });
+  const byKey = {};
+  rows.forEach(r => { byKey[String(r.symbol).toUpperCase() + '|' + (r.side || 'long')] = r; });
   positions.forEach(p => {
-    const meta = bySymbol[String(p.symbol).toUpperCase()];
+    const meta = byKey[String(p.symbol).toUpperCase() + '|' + (p.side || 'long')];
     if (meta) {
       p.target    = meta.target    || '';
       p.stop_loss = meta.stop_loss || '';
@@ -3025,99 +3026,291 @@ function applyFIFO_(ops) {
   ops.sort(function(a, b) {
     var diff = a.date.getTime() - b.date.getTime();
     if (diff !== 0) return diff;
-    if (a.action === 'BUY' && b.action === 'SELL') return -1;
-    if (a.action === 'SELL' && b.action === 'BUY') return 1;
-    return 0;
+    var aOpen = isOpenAction_(a.action), bOpen = isOpenAction_(b.action);
+    if (aOpen && !bOpen) return -1;
+    if (!aOpen && bOpen) return 1;
+    return 0; // exact tie (e.g. two BUYs at the identical timestamp) — stable
+              // sort preserves original sheet row order, confirmed necessary
+              // by a real same-timestamp multi-lot batch in Matan's data (GGLL).
   });
 
-  var lots   = {};   // { symbol: [{date,qty,price,commission,remaining,notes}] }
+  var lots   = {};   // { symbol: { long: [...], short: [...] } }, each lot:
+                     // {date,qty,price,commission,remaining,notes,multiplier,instrument}
   var trades = [];
   var tradeId = 1;
+  var fifoErrors = [];
+
+  function lotsFor(sym) {
+    if (!lots[sym]) lots[sym] = { long: [], short: [] };
+    return lots[sym];
+  }
 
   ops.forEach(function(op) {
-    var sym = op.symbol;
-    if (!lots[sym]) lots[sym] = [];
+    var book = lotsFor(op.symbol);
+    var mult = op.multiplier || 1;
 
     if (op.action === 'BUY') {
-      lots[sym].push({ date: op.date, qty: op.qty, price: op.price,
-                       commission: op.commission, remaining: op.qty, notes: op.notes });
+      book.long.push({ date: op.date, qty: op.qty, price: op.price, commission: op.commission,
+                        remaining: op.qty, notes: op.notes, multiplier: mult, instrument: op.instrument });
+    } else if (op.action === 'SHORT_OPEN') {
+      book.short.push({ date: op.date, qty: op.qty, price: op.price, commission: op.commission,
+                         remaining: op.qty, notes: op.notes, multiplier: mult, instrument: op.instrument });
     } else if (op.action === 'SELL') {
-      var sellLeft       = op.qty;
-      var sellPrice      = op.price;
-      var sellCommTotal  = op.commission;
-
-      while (sellLeft > 0 && lots[sym] && lots[sym].length > 0) {
-        var lot     = lots[sym][0];
-        var matched = Math.min(sellLeft, lot.remaining);
-
-        var buyCommPerUnit  = lot.qty  > 0 ? lot.commission / lot.qty  : 0;
-        var sellCommPerUnit = op.qty   > 0 ? sellCommTotal  / op.qty   : 0;
-
-        var gross    = matched * (sellPrice - lot.price);
-        // tax = gross * 0.25 always (CLAUDE.md's documented formula, no sign
-        // condition) — losing trades get a negative tax (a 25% offset), same
-        // as the original historical data. Previously clamped to 0 on losses,
-        // which silently understated net on every losing trade — see
-        // docs/ARCHITECTURE.md "Data model" for the audit that found this.
-        var tax      = Math.round(gross * 0.25 * 100) / 100;
-        var buyComm  = Math.round(buyCommPerUnit  * matched * 100) / 100;
-        var sellComm = Math.round(sellCommPerUnit * matched * 100) / 100;
-        var net      = Math.round((gross - tax - buyComm - sellComm) * 100) / 100;
-        var pct      = lot.price > 0 ? Math.round((sellPrice - lot.price) / lot.price * 10000) / 100 : 0;
-        var holdDays = Math.round((op.date.getTime() - lot.date.getTime()) / 86400000);
-        var cost     = Math.round(matched * lot.price * 100) / 100;
-        var tz       = Session.getScriptTimeZone();
-        var monthKey = Utilities.formatDate(op.date, tz, 'yyyy-MM');
-
-        trades.push({
-          id:           tradeId++,
-          symbol:       sym,
-          buy_date:     formatDateDDMMYYYY_(lot.date),
-          sell_date:    formatDateDDMMYYYY_(op.date),
-          qty:          matched,
-          buy_price:    lot.price,
-          sell_price:   sellPrice,
-          cost:         cost,
-          gross:        Math.round(gross * 100) / 100,
-          tax:          tax,
-          net:          net,
-          pct:          pct,
-          hold_days:    holdDays,
-          month:        monthKey,
-          notes:        lot.notes || op.notes || '',
-          entry_reason: '', exit_reason: '', respected_stop: '',
-          followed_plan: '', lesson: '', emotion: ''
-        });
-
-        lot.remaining -= matched;
-        sellLeft      -= matched;
-        if (lot.remaining <= 0) lots[sym].shift();
-      }
+      closeLots_(book.long, op, 'long', trades, function () { return tradeId++; }, fifoErrors);
+    } else if (op.action === 'SHORT_CLOSE') {
+      closeLots_(book.short, op, 'short', trades, function () { return tradeId++; }, fifoErrors);
     }
   });
 
-  // Remaining lots → open positions
+  // Remaining lots → open positions, keyed by symbol+side — a long and a
+  // short position on the same symbol are two distinct rows, never merged.
+  // See mergePositionMeta_ for the matching read-side key.
   var positions = [];
   var posId = 1;
   Object.keys(lots).forEach(function(sym) {
-    var activeLots = lots[sym].filter(function(l) { return l.remaining > 0; });
-    if (!activeLots.length) return;
-    var totalQty  = activeLots.reduce(function(s, l) { return s + l.remaining; }, 0);
-    var totalCost = activeLots.reduce(function(s, l) { return s + l.remaining * l.price; }, 0);
-    var avgPrice  = totalQty > 0 ? Math.round(totalCost / totalQty * 100) / 100 : 0;
-    positions.push({
-      id:         posId++,
-      symbol:     sym,
-      qty:        totalQty,
-      avg_price:  avgPrice,
-      target:     '',
-      stop_loss:  '',
-      notes:      '',
-      added_date: formatDateDDMMYYYY_(activeLots[0].date)
+    ['long', 'short'].forEach(function(side) {
+      var activeLots = lots[sym][side].filter(function(l) { return l.remaining > 0; });
+      if (!activeLots.length) return;
+      var mult      = activeLots[0].multiplier || 1;
+      var totalQty  = activeLots.reduce(function(s, l) { return s + l.remaining; }, 0);
+      var totalCost = activeLots.reduce(function(s, l) { return s + l.remaining * l.price; }, 0);
+      var avgPrice  = totalQty > 0 ? Math.round(totalCost / totalQty * 100) / 100 : 0;
+      positions.push({
+        id:         posId++,
+        symbol:     sym,
+        side:       side,
+        instrument: activeLots[0].instrument,
+        multiplier: mult,
+        qty:        totalQty,
+        avg_price:  avgPrice,
+        target:     '',
+        stop_loss:  '',
+        notes:      '',
+        added_date: formatDateDDMMYYYY_(activeLots[0].date)
+      });
     });
   });
 
-  return { trades: trades, positions: positions };
+  return { trades: trades, positions: positions, errors: fifoErrors };
+}
+
+// Consumes `queue` (a long-lot or short-lot FIFO queue) against a closing op
+// (SELL closes a long queue, SHORT_CLOSE closes a short queue). Gross uses
+// the sign convention appropriate to `side`: a long trade profits when the
+// close price is above the open price; a short trade profits when the close
+// price is below the open (short-sale) price. `multiplier` (100 for options,
+// 1 for stocks — see detectInstrument_) is applied to every dollar figure
+// (gross/net/cost) but never to qty or pct, matching how options premiums
+// are quoted per-share/per-contract in the source data.
+//
+// buy_date/buy_price/sell_date/sell_price are reused for short trades too
+// (buy_date/buy_price = the short-sale open, sell_date/sell_price = the
+// cover) so the existing frontend trade-row schema keeps working unchanged;
+// `side` is what a future UI pass should key off of to label them correctly
+// — see docs/TECHNICAL_DEBT.md "Matan bank-import mapping" follow-ups.
+function closeLots_(queue, op, side, trades, nextId, fifoErrors) {
+  var closeLeft      = op.qty;
+  var closePrice     = op.price;
+  var closeCommTotal = op.commission;
+  var mult           = op.multiplier || 1;
+
+  while (closeLeft > 0 && queue.length > 0) {
+    var lot     = queue[0];
+    var matched = Math.min(closeLeft, lot.remaining);
+
+    var openCommPerUnit  = lot.qty > 0 ? lot.commission / lot.qty : 0;
+    var closeCommPerUnit = op.qty  > 0 ? closeCommTotal  / op.qty  : 0;
+
+    var gross = (side === 'long')
+      ? matched * (closePrice - lot.price) * mult
+      : matched * (lot.price - closePrice) * mult;
+    // tax = gross * 0.25 always (CLAUDE.md's documented formula, no sign
+    // condition) — see docs/TECHNICAL_DEBT.md for the audit that found the
+    // original clamp-to-zero-on-losses bug in Idan's instance.
+    var tax       = Math.round(gross * 0.25 * 100) / 100;
+    var openComm  = Math.round(openCommPerUnit  * matched * 100) / 100;
+    var closeComm = Math.round(closeCommPerUnit * matched * 100) / 100;
+    var net       = Math.round((gross - tax - openComm - closeComm) * 100) / 100;
+    var pctRaw    = lot.price > 0
+      ? (side === 'long' ? (closePrice - lot.price) / lot.price : (lot.price - closePrice) / lot.price)
+      : 0;
+    var pct       = Math.round(pctRaw * 10000) / 100;
+    var holdDays  = Math.round((op.date.getTime() - lot.date.getTime()) / 86400000);
+    var cost      = Math.round(matched * lot.price * mult * 100) / 100;
+    var tz        = Session.getScriptTimeZone();
+    var monthKey  = Utilities.formatDate(op.date, tz, 'yyyy-MM');
+
+    trades.push({
+      id:           nextId(),
+      symbol:       op.symbol,
+      side:         side,
+      instrument:   op.instrument,
+      multiplier:   mult,
+      buy_date:     side === 'long' ? formatDateDDMMYYYY_(lot.date) : formatDateDDMMYYYY_(op.date),
+      sell_date:    side === 'long' ? formatDateDDMMYYYY_(op.date)  : formatDateDDMMYYYY_(lot.date),
+      qty:          matched,
+      buy_price:    side === 'long' ? lot.price : closePrice,
+      sell_price:   side === 'long' ? closePrice : lot.price,
+      cost:         cost,
+      gross:        Math.round(gross * 100) / 100,
+      tax:          tax,
+      net:          net,
+      pct:          pct,
+      hold_days:    holdDays,
+      month:        monthKey,
+      notes:        lot.notes || op.notes || '',
+      entry_reason: '', exit_reason: '', respected_stop: '',
+      followed_plan: '', lesson: '', emotion: ''
+    });
+
+    lot.remaining -= matched;
+    closeLeft     -= matched;
+    if (lot.remaining <= 0) queue.shift();
+  }
+
+  // Never silently drop the unmatched remainder — surface it as an explicit,
+  // row-attributed error instead (e.g. a SELL for more shares than are
+  // currently open, or a BC covering more than was ever shorted).
+  if (closeLeft > 0) {
+    fifoErrors.push({
+      row: op.row,
+      symbol: op.symbol,
+      reason: (side === 'long' ? 'SELL' : 'BC') + ' חורג מהכמות הפתוחה הזמינה (' +
+        (op.qty - closeLeft) + '/' + op.qty + ' נסגר בהצלחה, ' + closeLeft + ' ללא lot תואם)'
+    });
+  }
+}
+
+// ── Action-code mapping (Matan's bank export → FIFO PRO canonical) ──────
+// BUY/SEL are plain long open/close; SS (Short Sell) opens a short position,
+// BC (Buy to Cover) closes one. Anything else is an explicit error, never a
+// silent skip — see normalizeOperations_.
+var ACTION_MAP_ = { BUY: 'BUY', SELL: 'SELL', SEL: 'SELL', SS: 'SHORT_OPEN', BC: 'SHORT_CLOSE' };
+
+function isOpenAction_(canonicalAction) {
+  return canonicalAction === 'BUY' || canonicalAction === 'SHORT_OPEN';
+}
+
+// Detects an OCC-style option symbol as used in Matan's bank export:
+// "ROOT YYMMDDC/PSTRIKE8", e.g. "ONDS 270115C00015000" → root ONDS, expiry
+// 2027-01-15, Call, strike $15.00. Standard US equity option multiplier
+// (100 shares/contract) is applied to every dollar figure downstream —
+// confirmed against real data: qty 50 @ price 2.25 nets a שווי of 11,250 =
+// 50 × 2.25 × 100 in Matan's own sheet, not 112.5.
+function detectInstrument_(symbolRaw) {
+  var s = String(symbolRaw || '').trim().toUpperCase();
+  var m = s.match(/^([A-Z]{1,6})\s(\d{6})([CP])(\d{8})$/);
+  if (m) {
+    var yy = m[2].slice(0, 2), mm = m[2].slice(2, 4), dd = m[2].slice(4, 6);
+    return {
+      instrument: 'option',
+      multiplier: 100,
+      canonicalSymbol: s,
+      root: m[1],
+      optionType: m[3] === 'C' ? 'call' : 'put',
+      expiry: '20' + yy + '-' + mm + '-' + dd,
+      strike: parseInt(m[4], 10) / 1000
+    };
+  }
+  return { instrument: 'stock', multiplier: 1, canonicalSymbol: s };
+}
+
+// Explicit bank-format date parser — does NOT rely on ambient `new
+// Date(string)` parsing. Matan's export uses "MM/DD/YYYY HH:MM:SS EDT|EST";
+// Idan's own instance already hit a real timezone/date bug this way (see
+// docs/TECHNICAL_DEBT.md "date-handling bug found during live verification")
+// — fixed offsets from the literal EDT/EST abbreviation already present per
+// row avoid re-deriving DST rules entirely.
+function parseBankDate_(dateVal) {
+  if (dateVal instanceof Date) {
+    if (isNaN(dateVal.getTime())) return { date: null, error: 'תאריך לא תקין (ערך Date פגום)' };
+    return { date: dateVal, error: null };
+  }
+  var raw = String(dateVal || '').trim();
+  if (!raw) return { date: null, error: 'תאריך ריק' };
+
+  var m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+(EDT|EST)$/);
+  if (m) {
+    var month = parseInt(m[1], 10), day = parseInt(m[2], 10), year = parseInt(m[3], 10);
+    var hour  = parseInt(m[4], 10), min = parseInt(m[5], 10), sec = parseInt(m[6], 10);
+    var offsetHours = (m[7] === 'EDT') ? 4 : 5; // hours behind UTC, fixed (no DST math needed)
+    var d = new Date(Date.UTC(year, month - 1, day, hour + offsetHours, min, sec));
+    if (isNaN(d.getTime())) return { date: null, error: 'תאריך לא תקין אחרי פירוק (' + raw + ')' };
+    return { date: d, error: null };
+  }
+
+  // Fallback for a plain date-only string (legacy hand-typed row, no
+  // time/timezone component — no ambiguity risk from time-of-day math).
+  var d2 = new Date(raw);
+  if (!isNaN(d2.getTime())) return { date: d2, error: null };
+
+  return { date: null, error: 'פורמט תאריך לא מזוהה: "' + raw + '"' };
+}
+
+// Normalizes raw "פעולות" rows into { ops, errors, skipped } — every input
+// row lands in exactly one of the three, so nothing can silently vanish.
+// `errors` = genuinely bad/unrecognized data (surfaced to the frontend).
+// `skipped` = intentionally-tolerated non-data rows (blank rows, the
+// sheet's known stray second header row) — logged, not hidden, but not
+// treated as a data-quality problem either.
+function normalizeOperations_(data) {
+  var ops = [];
+  var errors = [];
+  var skipped = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var rowNum = i + 1; // 1-indexed sheet row, for human-readable reports
+    var row = data[i];
+    var dateVal   = row[0];
+    var symbolRaw = String(row[1] || '').trim();
+    var actionRaw = String(row[2] || '').trim().toUpperCase();
+    var qty       = parseFloat(row[3]);
+    var price     = parseFloat(row[4]);
+    // Columns F/G in Matan's actual sheet hold computed שווי/רווח&הפסד, not
+    // real commission/notes — deliberately not read as such (would corrupt
+    // net by treating notional value as a commission deduction). See
+    // docs/TECHNICAL_DEBT.md "Matan bank-import mapping".
+    var commission = 0;
+    var notes = '';
+
+    var qtyEmpty   = row[3] === '' || row[3] === null || row[3] === undefined;
+    var priceEmpty = row[4] === '' || row[4] === null || row[4] === undefined;
+
+    if (!symbolRaw && !actionRaw && qtyEmpty && priceEmpty) {
+      skipped.push({ row: rowNum, reason: 'שורה ריקה' });
+      continue;
+    }
+
+    var canonicalAction = ACTION_MAP_[actionRaw];
+    if (!canonicalAction) {
+      // The sheet's own stray second header row (see file-level comment
+      // above) reads as non-numeric qty/price with no recognized action —
+      // tolerate it by name instead of reporting it as a data error.
+      if (isNaN(qty) && isNaN(price)) {
+        skipped.push({ row: rowNum, reason: 'שורת כותרת משנית (לא נתונים)' });
+      } else {
+        errors.push({ row: rowNum, symbol: symbolRaw, reason: 'פעולה לא מוכרת: "' + actionRaw + '"' });
+      }
+      continue;
+    }
+
+    if (!symbolRaw) { errors.push({ row: rowNum, reason: 'סימבול חסר' }); continue; }
+    if (isNaN(qty) || qty <= 0) { errors.push({ row: rowNum, symbol: symbolRaw, reason: 'כמות לא תקינה: "' + row[3] + '"' }); continue; }
+    if (isNaN(price) || price <= 0) { errors.push({ row: rowNum, symbol: symbolRaw, reason: 'מחיר לא תקין: "' + row[4] + '"' }); continue; }
+
+    var parsedDate = parseBankDate_(dateVal);
+    if (!parsedDate.date) { errors.push({ row: rowNum, symbol: symbolRaw, reason: parsedDate.error }); continue; }
+
+    var inst = detectInstrument_(symbolRaw);
+
+    ops.push({
+      row: rowNum, date: parsedDate.date, symbol: inst.canonicalSymbol, action: canonicalAction,
+      qty: qty, price: price, commission: commission, notes: notes,
+      instrument: inst.instrument, multiplier: inst.multiplier
+    });
+  }
+
+  return { ops: ops, errors: errors, skipped: skipped };
 }
 
 function formatDateDDMMYYYY_(date) {
