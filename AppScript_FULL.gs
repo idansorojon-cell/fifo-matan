@@ -2009,8 +2009,16 @@ function sha256hex_(text) {
 // SHEET HELPERS (generic, header-name based — robust to column order)
 // ════════════════════════════════════════════════════════════
 
+// MATAN INSTANCE: getActiveSpreadsheet() returns null for a standalone
+// script (created directly at script.google.com, not "Extensions > Apps
+// Script" from inside a Sheet) — which is how this project was created.
+// Idan's own instance is container-bound, so getActiveSpreadsheet() there
+// already resolves to that bound sheet and the `||` below never triggers —
+// zero behavior change for production. For a standalone script, the only
+// spreadsheet in play at all is the Operations one (OPERATIONS_SPREADSHEET_ID),
+// so the legacy Positions/Trades/Watchlist/Settings tabs live there too.
 function getSheet_(name) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.getActiveSpreadsheet() || getOperationsSpreadsheet_();
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   return sh;
