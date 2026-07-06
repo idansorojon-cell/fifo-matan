@@ -3103,11 +3103,18 @@ function applyFIFO_(ops) {
 // (gross/net/cost) but never to qty or pct, matching how options premiums
 // are quoted per-share/per-contract in the source data.
 //
-// buy_date/buy_price/sell_date/sell_price are reused for short trades too
-// (buy_date/buy_price = the short-sale open, sell_date/sell_price = the
-// cover) so the existing frontend trade-row schema keeps working unchanged;
-// `side` is what a future UI pass should key off of to label them correctly
-// — see docs/TECHNICAL_DEBT.md "Matan bank-import mapping" follow-ups.
+// buy_date/buy_price ALWAYS = the opening event (lot), sell_date/sell_price
+// ALWAYS = the closing/realization event (op) — for both long and short.
+// This is deliberate: the rest of the frontend (calcStats, dashboard "today's
+// trades", journal/ledger sort order, day-of-week/heatmap bucketing, hold_days)
+// universally assumes buy_date <= sell_date and sell_date = "when this P&L
+// was realized" — over a dozen call sites across app.js/dashboard.js/
+// charts.js/journal.js/ledger.js/decisionEngine.js/dailyGrade.js/
+// learningEngine.js/tradeReplay.js/settings.js/trades.js. Naming buy/sell by
+// chronological role (not by literal BUY/SELL transaction) keeps every one
+// of those working unmodified for shorts too. `side` is what the UI keys off
+// of to label which one was actually a sale vs a purchase — see
+// docs/TECHNICAL_DEBT.md "Matan bank-import mapping".
 function closeLots_(queue, op, side, trades, nextId, fifoErrors) {
   var closeLeft      = op.qty;
   var closePrice     = op.price;
@@ -3146,11 +3153,11 @@ function closeLots_(queue, op, side, trades, nextId, fifoErrors) {
       side:         side,
       instrument:   op.instrument,
       multiplier:   mult,
-      buy_date:     side === 'long' ? formatDateDDMMYYYY_(lot.date) : formatDateDDMMYYYY_(op.date),
-      sell_date:    side === 'long' ? formatDateDDMMYYYY_(op.date)  : formatDateDDMMYYYY_(lot.date),
+      buy_date:     formatDateDDMMYYYY_(lot.date),
+      sell_date:    formatDateDDMMYYYY_(op.date),
       qty:          matched,
-      buy_price:    side === 'long' ? lot.price : closePrice,
-      sell_price:   side === 'long' ? closePrice : lot.price,
+      buy_price:    lot.price,
+      sell_price:   closePrice,
       cost:         cost,
       gross:        Math.round(gross * 100) / 100,
       tax:          tax,
