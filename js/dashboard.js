@@ -6,7 +6,8 @@
 
 const Dashboard = (() => {
   const { f$, fILS, fpct, fnum, usdToIls, tradesNetIls,
-          currentMonthKey, parseDD, monthLabel, LS } = Utils;
+          currentMonthKey, parseDD, monthLabel, LS,
+          unrealizedPnl } = Utils;
 
   // ── Main render ─────────────────────────────────────────
 
@@ -44,7 +45,7 @@ const Dashboard = (() => {
 
     const openPnl = APP.positions.reduce((s, p) => {
       const live = APP.liveData[p.symbol];
-      return s + (live?.price ? (live.price - p.avg_price) * p.qty : 0);
+      return s + (unrealizedPnl(p, live?.price) || 0);
     }, 0);
 
     const greeting = timeGreeting() + ' ' + Auth.getDisplayName();
@@ -110,13 +111,13 @@ const Dashboard = (() => {
     let openPnl = 0;
     APP.positions.forEach(p => {
       const live = APP.liveData[p.symbol];
-      if (live && live.price) openPnl += (live.price - p.avg_price) * p.qty;
+      if (live && live.price) openPnl += unrealizedPnl(p, live.price);
     });
 
-    // Exposure
+    // Exposure — notional $ tied up, scaled by multiplier for options (100/contract)
     const exposure = APP.positions.reduce((s,p) => {
       const live = APP.liveData[p.symbol];
-      return s + (live?.price || p.avg_price) * p.qty;
+      return s + (live?.price || p.avg_price) * p.qty * (p.multiplier || 1);
     }, 0);
 
     const kpis = [

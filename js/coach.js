@@ -60,7 +60,7 @@ const Coach = (() => {
     (APP.positions || []).forEach(p => {
       const live = APP.liveData[p.symbol];
       if (!live?.price) return;
-      const pnlPct = (live.price - p.avg_price) / p.avg_price * 100;
+      const pnlPct = Utils.unrealizedPnlPct(p, live.price);
       const days   = heldDays(p);
       const hasStop = !!p.stop_loss;
       const entry   = { symbol: p.symbol, findings: [] };

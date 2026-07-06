@@ -113,8 +113,10 @@ const AIChat = (() => {
 
     const openPos = APP.positions.map(p => {
       const live = APP.liveData[p.symbol];
-      const pnl  = live?.price ? (live.price - p.avg_price) * p.qty : null;
-      return `${p.symbol} x${p.qty} @ $${p.avg_price}${pnl!==null?` | P&L: ${f$(Math.round(pnl))}`:''}`;
+      const pnl  = Utils.unrealizedPnl(p, live?.price);
+      const sideLabel = p.side === 'short' ? 'SHORT' : 'LONG';
+      const instLabel = p.instrument === 'option' ? ' (Option)' : '';
+      return `${p.symbol}${instLabel} [${sideLabel}] x${p.qty} @ $${p.avg_price}${pnl!==null?` | P&L: ${f$(Math.round(pnl))}`:''}`;
     }).join('; ');
 
     return `אתה AI Coach מסחרי מקצועי עבור מסחר בשוק המניות האמריקאי.

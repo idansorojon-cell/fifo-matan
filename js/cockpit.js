@@ -30,7 +30,7 @@ const Cockpit = (() => {
       const live = APP.liveData[p.symbol];
       if (!live?.price) return;
 
-      const pnlPct   = (live.price - p.avg_price) / p.avg_price * 100;
+      const pnlPct   = Utils.unrealizedPnlPct(p, live.price);
       const hasStop  = !!p.stop_loss;
       const heldDays = p.added_date ? Math.round((Date.now() - Utils.parseDD(p.added_date).getTime()) / 86400000) : null;
       const risk     = (typeof Positions !== 'undefined') ? Positions.riskStatus(p, live) : null;
