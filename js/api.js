@@ -16,7 +16,7 @@ const API = (() => {
   // MATAN INSTANCE: deployed Web App URL for "FIFO PRO - Matan Web" (Matan's
   // own Apps Script project, isolated from Idan's production API_URL — see
   // docs/PROJECT_OVERVIEW.md).
-  const API_URL = 'https://script.google.com/macros/s/AKfycbw83cQJuSPfCb2bhILtcWeCL69yBwnJLxpCrfkrnkClm4QI53zpPiF4D9hVCNn_Rpr_jQ/exec';
+  const API_URL = 'https://script.google.com/macros/s/AKfycbxOpgxuNhzj3fF7AqnluoxMYPSwlyzEpP8cCDUSZzklb0igM-ZfQpme7jZMGqW9H1SVSw/exec';
   // NOTE: the Polygon.io API key and the Anthropic API key must NEVER live
   // in client-side JS — anyone can read them from the browser. Both live
   // prices and AI Chat are proxied through Google Apps Script instead
