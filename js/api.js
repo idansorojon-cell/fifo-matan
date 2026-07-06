@@ -13,11 +13,10 @@ const API = (() => {
   // docs/PROJECT_OVERVIEW.md "Deployment".
   const AUTH_DISABLED = false;
 
-  // MATAN INSTANCE: placeholder — must be replaced with Matan's own Apps
-  // Script Web App deployment URL (script.google.com → Deploy → New
-  // deployment, on Matan's own Apps Script project, NOT Idan's). Isolated
-  // from Idan's production API_URL on purpose — see docs/PROJECT_OVERVIEW.md.
-  const API_URL = 'PLACEHOLDER_MATAN_DEPLOYMENT_URL';
+  // MATAN INSTANCE: deployed Web App URL for "FIFO PRO - Matan Web" (Matan's
+  // own Apps Script project, isolated from Idan's production API_URL — see
+  // docs/PROJECT_OVERVIEW.md).
+  const API_URL = 'https://script.google.com/macros/s/AKfycbw83cQJuSPfCb2bhILtcWeCL69yBwnJLxpCrfkrnkClm4QI53zpPiF4D9hVCNn_Rpr_jQ/exec';
   // NOTE: the Polygon.io API key and the Anthropic API key must NEVER live
   // in client-side JS — anyone can read them from the browser. Both live
   // prices and AI Chat are proxied through Google Apps Script instead
