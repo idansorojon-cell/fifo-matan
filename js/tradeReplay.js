@@ -156,6 +156,7 @@ const TradeReplay = (() => {
           <div class="tc-header">
             <div style="display:flex;align-items:center;gap:10px">
               <div class="tc-sym">${t.symbol}</div>
+              ${Utils.sideBadge(t)} ${Utils.instrumentBadge(t)}
               ${isBig ? `<div class="badge ${isWin ? 'badge-green' : 'badge-red'}">🔥 ${Math.abs(t.pct).toFixed(0)}%</div>` : ''}
               ${isLong ? `<div class="badge badge-blue">⏳ ${t.hold_days}d</div>` : ''}
             </div>

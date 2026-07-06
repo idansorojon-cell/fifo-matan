@@ -461,10 +461,10 @@ function restartPolling() {
 // ── Export CSV ──────────────────────────────────────────────
 function exportCSV() {
   const { parseDD } = Utils;
-  const headers = ['סימבול','תאריך קנייה','תאריך מכירה','כמות','מחיר קנייה','מחיר מכירה',
+  const headers = ['סימבול','כיוון','סוג','תאריך פתיחה','תאריך סגירה','כמות','מחיר פתיחה','מחיר סגירה',
     'עלות $','ברוטו $','מס $','נטו $','%','חודש','ימי החזקה','הערות',
     'סיבת כניסה','סיבת יציאה','כיבד סטופ','לפי תוכנית','לקח','מצב רגשי'];
-  const fields = ['symbol','buy_date','sell_date','qty','buy_price','sell_price',
+  const fields = ['symbol','side','instrument','buy_date','sell_date','qty','buy_price','sell_price',
     'cost','gross','tax','net','pct','month','hold_days','notes',
     'entry_reason','exit_reason','respected_stop','followed_plan','lesson','emotion'];
   const rows = [headers.join(',')];
@@ -498,7 +498,7 @@ function renderDailyBrief() {
   const goalPct     = APP.monthGoal > 0 ? Math.min(120, Math.round(monthNet / APP.monthGoal * 100)) : 0;
   const openPnl     = APP.positions.reduce((s,p) => {
     const live = APP.liveData[p.symbol];
-    return s + (live?.price ? (live.price - p.avg_price) * p.qty : 0);
+    return s + (Positions.unrealizedPnl(p, live?.price) || 0);
   }, 0);
 
   // What changed since last visit
@@ -513,10 +513,13 @@ function renderDailyBrief() {
   APP.positions.forEach(p => {
     const live = APP.liveData[p.symbol];
     if (live && live.price) {
-      const pnlPct = ((live.price - p.avg_price) / p.avg_price) * 100;
+      const pnlPct = Positions.unrealizedPnlPct(p, live.price);
       if (pnlPct < -8) risks.push(`${p.symbol}: ירד ${pnlPct.toFixed(1)}% מהכניסה`);
-      if (p.stop_loss && live.price < p.stop_loss * 1.02)
-        risks.push(`${p.symbol}: קרוב לסטופ ($${p.stop_loss})`);
+      // "Near stop" direction mirrors for a short (approaches from below).
+      const nearStop = p.stop_loss && (p.side === 'short'
+        ? live.price > p.stop_loss * 0.98
+        : live.price < p.stop_loss * 1.02);
+      if (nearStop) risks.push(`${p.symbol}: קרוב לסטופ ($${p.stop_loss})`);
     }
   });
 
@@ -786,7 +789,7 @@ function _biggestRiskPosition() {
   APP.positions.forEach(p => {
     const live = APP.liveData[p.symbol];
     if (!live?.price) return;
-    const pnlPct = (live.price - p.avg_price) / p.avg_price * 100;
+    const pnlPct = Positions.unrealizedPnlPct(p, live.price);
     const score  = -pnlPct; // higher score = bigger loss = bigger risk
     if (score > worstScore) { worstScore = score; worst = { p, live, pnlPct }; }
   });
@@ -803,8 +806,8 @@ function renderMissionControl() {
   let openPnl = 0, openCost = 0, liveCount = 0;
   APP.positions.forEach(p => {
     const live = APP.liveData[p.symbol];
-    openCost += p.avg_price * p.qty;
-    if (live?.price) { openPnl += (live.price - p.avg_price) * p.qty; liveCount++; }
+    openCost += p.avg_price * p.qty * (p.multiplier || 1);
+    if (live?.price) { openPnl += Positions.unrealizedPnl(p, live.price); liveCount++; }
   });
 
   // Today / Week / Month P&L from closed trades

@@ -46,6 +46,26 @@ const fprice = v => '$' + Number(v).toFixed(2);
  *  index.html references the sprite directly, no need for this there). */
 const icon = name => `<svg class="icon"><use href="#icon-${name}"/></svg>`;
 
+/** Long/Short badge — always shown (not just on the non-default case) since
+ *  a short trade's buy_price/sell_price/net-sign meaning is the opposite of
+ *  a long's, and hiding "Long" as an implicit default risks exactly the
+ *  confusion this badge exists to prevent. `t.side` is absent on any trade
+ *  from a data source that predates the Matan-instance FIFO engine
+ *  extension (legacy getTrades fallback) — treated as 'long', the only kind
+ *  that path can ever produce. */
+const sideBadge = t =>
+  t.side === 'short'
+    ? '<span class="badge badge-gold" title="מכירה בחסר — פותחים במכירה, סוגרים בקנייה חזרה">Short</span>'
+    : '<span class="badge badge-blue" title="פוזיציית לונג רגילה">Long</span>';
+
+/** Option badge — shown only for options; stock is the overwhelming
+ *  majority case and stays unbadged (same "flag the exception" convention
+ *  as the rest of the badge system, e.g. no badge for a normal win/loss). */
+const instrumentBadge = t =>
+  t.instrument === 'option'
+    ? `<span class="badge badge-purple" title="חוזה אופציה — מכפיל ${t.multiplier || 100}">Option</span>`
+    : '';
+
 // ── תאריכים ────────────────────────────────────────────────
 
 /** DD/MM/YYYY → Date */
@@ -285,6 +305,26 @@ function calcStats(trades = window.APP?.trades || []) {
   };
 }
 
+// ── Unrealized P&L (canonical — single source of truth) ────
+// Sign- and multiplier-aware: a long position profits when price rises
+// above avg_price; a short profits when price falls below it (mirror
+// image); multiplier (100 for options, 1 for stocks — see AppScript_FULL.gs
+// detectInstrument_) scales the $ figure. Used by positions.js (cards,
+// summary, alerts) AND app.js (Mission Control widgets) AND calcLiveStats
+// below — centralized here (utils.js loads before every other module) so
+// none of them can silently disagree on which direction is "up" for a
+// given position, the same reasoning as detectMistakes()/calcStats() above.
+function unrealizedPnl(p, price) {
+  if (!price) return null;
+  const perUnit = p.side === 'short' ? (p.avg_price - price) : (price - p.avg_price);
+  return perUnit * p.qty * (p.multiplier || 1);
+}
+function unrealizedPnlPct(p, price) {
+  if (!price || !p.avg_price) return null;
+  const perUnit = p.side === 'short' ? (p.avg_price - price) : (price - p.avg_price);
+  return perUnit / p.avg_price * 100;
+}
+
 // ── Mark-to-market (FIFO PRO 2.0 — Cockpit) ─────────────────
 // Additive only: calls calcStats() unmodified for the realized side, and
 // reuses the exact same open-P&L formula already proven correct in
@@ -298,8 +338,8 @@ function calcLiveStats(trades, positions, liveData) {
   let unrealizedNet = 0, unrealizedCost = 0, liveCount = 0;
   (positions || []).forEach(p => {
     const live = (liveData || {})[p.symbol];
-    unrealizedCost += p.avg_price * p.qty;
-    if (live?.price) { unrealizedNet += (live.price - p.avg_price) * p.qty; liveCount++; }
+    unrealizedCost += p.avg_price * p.qty * (p.multiplier || 1);
+    if (live?.price) { unrealizedNet += unrealizedPnl(p, live.price); liveCount++; }
   });
 
   return {
@@ -455,10 +495,10 @@ function finalRecommendation(score) {
 
 window.Utils = {
   TAX, DEFAULT_ILS, MONTHLY_ILS, GREEN, RED, BLUE, GOLD,
-  f$, fILS, fpct, fnum, fprice, icon,
+  f$, fILS, fpct, fnum, fprice, icon, sideBadge, instrumentBadge,
   parseDD, toDD, isoToDD, ddToISO, monthLabel, currentMonthKey, timeGreeting,
   rateForMonth, usdToIls, tradesNetIls,
-  normalizeTrade, calcStats, calcLiveStats, detectMistakes,
+  normalizeTrade, calcStats, calcLiveStats, unrealizedPnl, unrealizedPnlPct, detectMistakes,
   $, $$, setHTML, show, hide, LS, debounce,
   chartDefaults, scoreColor, scoreLabel, scoreLabelHE, finalRecommendation
 };

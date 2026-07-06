@@ -6,7 +6,8 @@
 
 const Trades = (() => {
   const { f$, fILS, fpct, fnum, TAX, parseDD, isoToDD, ddToISO,
-          normalizeTrade, usdToIls, rateForMonth, monthLabel, LS } = Utils;
+          normalizeTrade, usdToIls, rateForMonth, monthLabel, LS,
+          sideBadge, instrumentBadge } = Utils;
 
   // ── Filters ──────────────────────────────────────────────
 
@@ -71,7 +72,7 @@ const Trades = (() => {
     tbody.innerHTML = shown.map(t => {
       const netIls = Math.round(usdToIls(t.net, t.month));
       return `<tr>
-        <td style="font-weight:700">${t.symbol}</td>
+        <td style="font-weight:700">${t.symbol} ${sideBadge(t)} ${instrumentBadge(t)}</td>
         <td style="color:var(--text-3)">${t.sell_date}</td>
         <td>${fnum(t.qty)}</td>
         <td>$${t.buy_price}</td>

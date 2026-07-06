@@ -96,7 +96,7 @@ const Ledger = (() => {
     if (r.position) {
       html += `
         <div class="ledger-detail-block">
-          <div class="ledger-detail-title">פוזיציה פתוחה</div>
+          <div class="ledger-detail-title">פוזיציה פתוחה ${Utils.sideBadge(r.position)} ${Utils.instrumentBadge(r.position)}</div>
           <div class="ledger-detail-grid">
             <div><span style="color:var(--text-3)">כמות</span> <bdi>${r.position.qty}</bdi></div>
             <div><span style="color:var(--text-3)">כניסה</span> <bdi>$${r.position.avg_price}</bdi></div>
@@ -120,11 +120,12 @@ const Ledger = (() => {
         <div class="ledger-detail-block">
           <div class="ledger-detail-title">היסטוריית עסקאות (עד 10 אחרונות)</div>
           <div class="table-wrap"><table>
-            <thead><tr><th>תאריך</th><th>כמות</th><th>קנייה</th><th>מכירה</th><th>נטו</th></tr></thead>
+            <thead><tr><th>תאריך סגירה</th><th>סוג</th><th>כמות</th><th>פתיחה</th><th>סגירה</th><th>נטו</th></tr></thead>
             <tbody>
               ${rows.map(t => `
                 <tr>
                   <td>${t.sell_date}</td>
+                  <td>${Utils.sideBadge(t)} ${Utils.instrumentBadge(t)}</td>
                   <td><bdi>${t.qty}</bdi></td>
                   <td><bdi>$${t.buy_price}</bdi></td>
                   <td><bdi>$${t.sell_price}</bdi></td>

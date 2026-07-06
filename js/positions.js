@@ -6,7 +6,8 @@
 
 const Positions = (() => {
   const { f$, fILS, fpct, fnum, fprice, usdToIls, currentMonthKey,
-          isoToDD, ddToISO, LS } = Utils;
+          isoToDD, ddToISO, LS, sideBadge, instrumentBadge,
+          unrealizedPnl, unrealizedPnlPct } = Utils;
 
   const ALERT_SHOWN_KEY  = 'fifo_alerts_shown_v1';
   const WARN_THRESHOLD_PCT = -5;
@@ -28,9 +29,10 @@ const Positions = (() => {
     APP.positions.forEach(p => {
       const live  = APP.liveData[p.symbol];
       const price = live?.price;
-      totalCost += p.avg_price * p.qty;
-      if (price) { totalVal += price * p.qty; totalPnl += (price - p.avg_price)*p.qty; liveCount++; }
-      else totalVal += p.avg_price * p.qty;
+      const mult  = p.multiplier || 1;
+      totalCost += p.avg_price * p.qty * mult;
+      if (price) { totalVal += price * p.qty * mult; totalPnl += unrealizedPnl(p, price); liveCount++; }
+      else totalVal += p.avg_price * p.qty * mult;
     });
 
     el.style.display = 'flex';
@@ -69,8 +71,13 @@ const Positions = (() => {
   function riskStatus(p, live) {
     const price = live?.price;
     if (!price) return { level: 'none', label: '—', color: 'var(--text-3)' };
-    const pnlPct  = (price - p.avg_price) / p.avg_price * 100;
-    const stopPct = p.stop_loss ? (price - p.stop_loss) / price * 100 : null;
+    const pnlPct  = unrealizedPnlPct(p, price);
+    // stop_loss direction is also mirrored for a short (stop sits ABOVE
+    // entry, triggers on price rising into it) — see checkAlerts() below,
+    // which already needs the same mirroring for its own stop/target checks.
+    const stopPct = p.stop_loss
+      ? (p.side === 'short' ? (p.stop_loss - price) / price * 100 : (price - p.stop_loss) / price * 100)
+      : null;
     if ((p.stop_loss && price <= p.stop_loss) || pnlPct <= -10)
       return { level: 'high', label: icon('dot') + ' סיכון גבוה', color: 'var(--red)' };
     if (pnlPct <= WARN_THRESHOLD_PCT || (stopPct !== null && stopPct < 5))
@@ -81,11 +88,13 @@ const Positions = (() => {
   function posCard(p) {
     const live      = APP.liveData[p.symbol];
     const price     = live?.price;
+    const mult      = p.multiplier || 1;
     // P&L is ALWAYS vs your entry price (p.avg_price) — never touches
-    // prevClose. This was already correct; kept exactly as-is.
-    const pnl       = price ? (price - p.avg_price) * p.qty : null;
-    const pnlPct    = price ? (price - p.avg_price) / p.avg_price * 100 : null;
-    const val       = price ? price * p.qty : p.avg_price * p.qty;
+    // prevClose. Sign mirrors for a short (profits when price falls) and
+    // scales by multiplier for options (100/contract) — see unrealizedPnl.
+    const pnl       = unrealizedPnl(p, price);
+    const pnlPct    = unrealizedPnlPct(p, price);
+    const val       = (price ? price : p.avg_price) * p.qty * mult;
 
     // BUG FIX: daily change must come from the backend's own validated
     // changePct, gated on changePctValid — NEVER recomputed client-side
@@ -104,7 +113,7 @@ const Positions = (() => {
       <div class="pos-card pos-card--${risk.level}">
         <div class="pos-card-top">
           <div class="pos-card-sym">
-            ${p.symbol}
+            ${p.symbol} ${sideBadge(p)} ${instrumentBadge(p)}
             ${live ? '<span class="live-dot"></span>' : ''}
           </div>
           <span class="risk-pill" style="color:${risk.color};border-color:${risk.color}">${risk.label}</span>
@@ -291,16 +300,24 @@ const Positions = (() => {
       const live = APP.liveData[p.symbol];
       if (!live?.price) return;
       const price = live.price;
-      const pct   = (price - p.avg_price) / p.avg_price * 100;
-      if (p.target && price >= p.target) {
+      const short = p.side === 'short';
+      // Target/stop direction mirrors for a short: target sits below entry
+      // (hit when price falls to/below it), stop sits above entry (hit when
+      // price rises to/above it) — the opposite of a long. pct itself uses
+      // the same sign convention as unrealizedPnlPct (positive = profit).
+      const pct        = short ? (p.avg_price - price) / p.avg_price * 100 : (price - p.avg_price) / p.avg_price * 100;
+      const targetHit  = p.target    && (short ? price <= p.target    : price >= p.target);
+      const stopHit    = p.stop_loss && (short ? price >= p.stop_loss : price <= p.stop_loss);
+      const stopSafe   = !p.stop_loss || (short ? price < p.stop_loss : price > p.stop_loss);
+      if (targetHit) {
         alerts.push({ id: _alertId('target', p.symbol, p.target), type: 'target', symbol: p.symbol,
-          msg: `${icon('target')} ${p.symbol} הגיע ליעד! <bdi>${fprice(price)} ≥ ${fprice(p.target)}</bdi>` });
+          msg: `${icon('target')} ${p.symbol} הגיע ליעד! <bdi>${fprice(price)} ${short?'≤':'≥'} ${fprice(p.target)}</bdi>` });
       }
-      if (stopAlertsEnabled && p.stop_loss && price <= p.stop_loss) {
+      if (stopAlertsEnabled && stopHit) {
         alerts.push({ id: _alertId('stop', p.symbol, p.stop_loss), type: 'stop', symbol: p.symbol,
-          msg: `${icon('octagon')} ${p.symbol} פגע בסטופ! <bdi>${fprice(price)} ≤ ${fprice(p.stop_loss)}</bdi>` });
+          msg: `${icon('octagon')} ${p.symbol} פגע בסטופ! <bdi>${fprice(price)} ${short?'≥':'≤'} ${fprice(p.stop_loss)}</bdi>` });
       }
-      if (stopAlertsEnabled && pct <= WARN_THRESHOLD_PCT && (!p.stop_loss || price > p.stop_loss)) {
+      if (stopAlertsEnabled && pct <= WARN_THRESHOLD_PCT && stopSafe) {
         alerts.push({ id: _alertId('warn', p.symbol, WARN_THRESHOLD_PCT), type: 'warn', symbol: p.symbol,
           msg: `${icon('alert-triangle')} ${p.symbol} ירד <bdi>${pct.toFixed(1)}%</bdi> מהכניסה` });
       }
@@ -654,13 +671,18 @@ const Positions = (() => {
   async function remove(id) {
     const p = APP.positions.find(x => x.id === id);
     if (!p) return;
-    if (!confirm(`למחוק את הפוזיציה ${p.symbol}? הפעולה תיכתב כמכירה מלאה של ${fnum(p.qty)} מניות במחיר העלות (${fprice(p.avg_price)}) ביומן הפעולות — ללא השפעה על הרווח/הפסד.`)) return;
+    // A short position is closed by covering (BC), not by SELL — SELL only
+    // ever consumes the long-lot queue in applyFIFO_, so appending it for a
+    // short would be rejected as "SELL חורג מהכמות הפתוחה" instead of
+    // actually closing anything. See AppScript_FULL.gs ACTION_MAP_.
+    const closeAction = p.side === 'short' ? 'BC' : 'SELL';
+    if (!confirm(`למחוק את הפוזיציה ${p.symbol} (${p.side === 'short' ? 'Short' : 'Long'})? הפעולה תיכתב כ${closeAction} מלא של ${fnum(p.qty)} ${p.instrument === 'option' ? 'חוזים' : 'מניות'} במחיר העלות (${fprice(p.avg_price)}) ביומן הפעולות — ללא השפעה על הרווח/הפסד.`)) return;
 
-    API.setStatus('מוחק פוזיציה — נכתב כפעולת SELL במחיר עלות ביומן הפעולות...', 'info');
+    API.setStatus(`מוחק פוזיציה — נכתב כפעולת ${closeAction} במחיר עלות ביומן הפעולות...`, 'info');
     API.showSpinner(true);
 
     const today = new Date().toISOString().split('T')[0];
-    const res = await API.appendOperation({ date: today, symbol: p.symbol, action: 'SELL', qty: p.qty, price: p.avg_price, notes: '' });
+    const res = await API.appendOperation({ date: today, symbol: p.symbol, action: closeAction, qty: p.qty, price: p.avg_price, notes: '' });
     if (!res.ok) {
       API.showSpinner(false);
       API.setStatus('❌ ' + (res.error || 'מחיקת הפוזיציה נכשלה'), 'error');
@@ -692,7 +714,7 @@ const Positions = (() => {
   return {
     render, refreshPrices, connectWS,
     checkAlerts, dismissAlert, toggleAlertList, showAlertList, hideAlertList,
-    riskStatus, calcRR,
+    riskStatus, calcRR, unrealizedPnl, unrealizedPnlPct,
     openForm, openEdit, closeForm, submit, remove,
   };
 })();
