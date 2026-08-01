@@ -89,8 +89,11 @@
 // shipped. Also added the three files below that index.html loads but
 // were missing from STATIC_ASSETS entirely (cockpit.js/ledger.js/
 // coach.js) — js/cockpit.js, js/ledger.js, js/coach.js, sw.js.
-const CACHE_NAME   = 'fifopro-v28';
-const STATIC_CACHE = 'fifopro-static-v28';
+// Bumped v28 -> v29: refreshPrices() (js/positions.js) reported a false
+// "Offline" status whenever every open position was an option (nothing to
+// poll Finnhub for is not a failure) — js/positions.js, sw.js.
+const CACHE_NAME   = 'fifopro-v29';
+const STATIC_CACHE = 'fifopro-static-v29';
 
 // NOTE: paths are relative (no leading "/") so they resolve correctly
 // both at a domain root AND under a GitHub Pages project subpath

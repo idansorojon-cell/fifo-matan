@@ -205,8 +205,23 @@ const Positions = (() => {
       // correctly. Skip them rather than surface a scary-looking Finnhub
       // error for something that was never going to work -- the position
       // card already shows "—" gracefully for any symbol with no live data.
-      const syms   = [...new Set(APP.positions.filter(p => p.instrument !== 'option').map(p => p.symbol))];
-      const prices = syms.length ? await API.fetchPrices(syms) : {};
+      const syms = [...new Set(APP.positions.filter(p => p.instrument !== 'option').map(p => p.symbol))];
+
+      // Every open position is an option right now -- there is nothing to
+      // poll Finnhub for at all, which is not a failure. Without this the
+      // code fell through to the same branch as "every symbol failed" and
+      // reported a false Offline status whenever the only open position(s)
+      // happened to be options (found 2026-08-01: Matan's sole open
+      // position, an ORCL option, triggered this every 15s poll).
+      if (!syms.length) {
+        render();
+        if (typeof renderMissionControl === 'function') renderMissionControl();
+        if (typeof Cockpit !== 'undefined') Cockpit.render();
+        API.reportPriceSuccess();
+        return;
+      }
+
+      const prices = await API.fetchPrices(syms);
 
       let loadedCount = 0;
       const errors = [];
