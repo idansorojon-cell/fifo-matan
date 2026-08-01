@@ -3198,9 +3198,18 @@ function closeLots_(queue, op, side, trades, nextId, fifoErrors) {
 
 // ── Action-code mapping (Matan's bank export → FIFO PRO canonical) ──────
 // BUY/SEL are plain long open/close; SS (Short Sell) opens a short position,
-// BC (Buy to Cover) closes one. Anything else is an explicit error, never a
-// silent skip — see normalizeOperations_.
-var ACTION_MAP_ = { BUY: 'BUY', SELL: 'SELL', SEL: 'SELL', SS: 'SHORT_OPEN', BC: 'SHORT_CLOSE' };
+// BC (Buy to Cover) closes one. BTO/STC/STO/BTC are the standard 4-way
+// options terminology (Buy/Sell To Open/Close) that started appearing in
+// the export for option rows (e.g. "STC" on an ONDS option close, found
+// 2026-08-01 — that row was being rejected as an unrecognized action until
+// this was added, silently excluding a real ~$5.7k net trade). Mapped to
+// the same canonical actions as their plain-English equivalents: STC/BTC
+// close (SELL/SHORT_CLOSE), BTO/STO open (BUY/SHORT_OPEN). Anything else is
+// an explicit error, never a silent skip — see normalizeOperations_.
+var ACTION_MAP_ = {
+  BUY: 'BUY', SELL: 'SELL', SEL: 'SELL', SS: 'SHORT_OPEN', BC: 'SHORT_CLOSE',
+  BTO: 'BUY', STC: 'SELL', STO: 'SHORT_OPEN', BTC: 'SHORT_CLOSE'
+};
 
 function isOpenAction_(canonicalAction) {
   return canonicalAction === 'BUY' || canonicalAction === 'SHORT_OPEN';

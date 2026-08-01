@@ -26,6 +26,24 @@ const Cockpit = (() => {
   function buildActionItems() {
     const items = [];
 
+    // Rows from "פעולות" the backend couldn't parse or FIFO-match (bad
+    // data, or a SELL/BC exceeding the open lot at that point in the
+    // ledger) — surfaced here instead of silently affecting totals, since
+    // that's exactly what happened before this was wired up: real
+    // duplicate/misformatted rows sat unnoticed and the displayed P&L
+    // quietly excluded them. One summary item, not one per row — the
+    // detail belongs in the sheet itself, not a cluttered action list.
+    const syncErrors = APP.dataSyncErrors || [];
+    if (syncErrors.length > 0) {
+      const rows = syncErrors.map(e => e.row).filter(r => r !== undefined);
+      const rowLabel = rows.length ? ` (שורות ${rows.join(', ')})` : '';
+      items.push({
+        severity: 'high',
+        symbol: '',
+        text: `${syncErrors.length} ${syncErrors.length === 1 ? 'שורה לא נקלטה' : 'שורות לא נקלטו'} מיומן הפעולות${rowLabel} — ייתכן שהמספרים לא כוללים אותן. בדוק את הגיליון.`,
+      });
+    }
+
     (APP.positions || []).forEach(p => {
       const live = APP.liveData[p.symbol];
       if (!live?.price) return;

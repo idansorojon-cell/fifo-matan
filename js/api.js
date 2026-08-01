@@ -165,7 +165,12 @@ const API = (() => {
           positions: ops.positions || [],
           goal:      gr.ok ? gr.goal : null,
           watchlist: wl.ok ? wl.watchlist : null,
-          source:    'operations'
+          source:    'operations',
+          // Rows from "פעולות" that couldn't be parsed or FIFO-matched (bad
+          // data, or a SELL/BC exceeding the open lot) — the backend never
+          // silently drops these, so the frontend must actually surface
+          // them too. See Cockpit.buildActionItems().
+          errors:    ops.errors    || []
         };
       }
 

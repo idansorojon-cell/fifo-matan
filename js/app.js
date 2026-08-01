@@ -153,12 +153,13 @@ function toggleDark() {
 
 // ── Clear in-memory private state ──────────────────────────
 function clearAppState() {
-  APP.trades     = [];
-  APP.positions  = [];
-  APP.watchlist  = [];
-  APP.liveData   = {};
-  APP.statsCache = null;
-  APP.monthGoal  = 5000;
+  APP.trades         = [];
+  APP.positions      = [];
+  APP.watchlist      = [];
+  APP.liveData       = {};
+  APP.statsCache     = null;
+  APP.monthGoal      = 5000;
+  APP.dataSyncErrors = [];
 }
 
 // ── Load data ───────────────────────────────────────────────
@@ -184,6 +185,7 @@ async function load() {
   if (!data) return false;
 
   APP.trades = (data.trades || []).map(Utils.normalizeTrade);
+  APP.dataSyncErrors = data.errors || [];
   if (data.goal !== null && data.goal !== undefined) APP.monthGoal = data.goal;
 
   if (data.positions) {
