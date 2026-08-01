@@ -198,8 +198,15 @@ const Positions = (() => {
     if (!APP.positions.length) return;
     if (manual) API.setButtonBusy('pos-refresh-btn', true);
     try {
-      const syms   = [...new Set(APP.positions.map(p => p.symbol))];
-      const prices = await API.fetchPrices(syms);
+      // Finnhub's /quote endpoint (the only live-price source this app
+      // uses) doesn't support options at all -- only plain stock tickers.
+      // Requesting a quote for an option position always fails, and always
+      // did; it just went unnoticed before options positions were tracked
+      // correctly. Skip them rather than surface a scary-looking Finnhub
+      // error for something that was never going to work -- the position
+      // card already shows "—" gracefully for any symbol with no live data.
+      const syms   = [...new Set(APP.positions.filter(p => p.instrument !== 'option').map(p => p.symbol))];
+      const prices = syms.length ? await API.fetchPrices(syms) : {};
 
       let loadedCount = 0;
       const errors = [];
@@ -215,7 +222,10 @@ const Positions = (() => {
         }
       });
 
-      if (!Object.keys(prices).length) {
+      // Only a real failure signal if we actually asked for something —
+      // an empty result is expected (not an error) when every open
+      // position is an option, since those are deliberately excluded above.
+      if (syms.length && !Object.keys(prices).length) {
         console.error('[prices] fetchPrices returned empty — auth or network error');
         API.reportPriceError('❌ מחירים לא נטענו — בדוק חיבור ו-API key', manual);
         render();
