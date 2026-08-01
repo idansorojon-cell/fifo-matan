@@ -79,8 +79,18 @@
 // permissions) — index.html, js/app.js, js/auth.js, js/api.js,
 // js/utils.js, js/settings.js, js/cockpit.js, js/dashboard.js,
 // js/positions.js, js/watchlist.js, js/journal.js, js/trades.js.
-const CACHE_NAME   = 'fifopro-v27';
-const STATIC_CACHE = 'fifopro-static-v27';
+// Bumped v27 -> v28: this version had never been bumped once since the
+// initial import into this Matan-specific repo, despite every subsequent
+// commit changing js/*.js (FIFO engine extension, Long/Short+Option
+// badges, price caching, Cockpit error banner, options-Finnhub-skip fix)
+// — a returning/installed-PWA user was stuck on the original imported
+// bundle regardless of what was actually deployed, which is the real
+// cause of a stale "Offline" status surviving a fix that had already
+// shipped. Also added the three files below that index.html loads but
+// were missing from STATIC_ASSETS entirely (cockpit.js/ledger.js/
+// coach.js) — js/cockpit.js, js/ledger.js, js/coach.js, sw.js.
+const CACHE_NAME   = 'fifopro-v28';
+const STATIC_CACHE = 'fifopro-static-v28';
 
 // NOTE: paths are relative (no leading "/") so they resolve correctly
 // both at a domain root AND under a GitHub Pages project subpath
@@ -98,6 +108,9 @@ const STATIC_ASSETS = [
   'js/charts.js',
   'js/dashboard.js',
   'js/positions.js',
+  'js/cockpit.js',
+  'js/ledger.js',
+  'js/coach.js',
   'js/watchlist.js',
   'js/journal.js',
   'js/analytics.js',
