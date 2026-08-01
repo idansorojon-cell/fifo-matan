@@ -176,7 +176,12 @@ function getRequiredMonthsFromActions_() {
     for (const r of rows) {
       const d = parseDate_(r[0], CFG.DEFAULT_YEAR);
       const type = normalizeTradeType_(r[2]);
-      if (isValidDate_(d) && type === "SELL") months.add(monthKey_(d));
+      // Any closing action needs an FX month entry, not just a literal
+      // "SELL" -- BC/BTC (short cover) and STC (option close) are closes
+      // too. Reuses ACTION_MAP_/isOpenAction_ (same mapping applyFIFO_
+      // uses) instead of a second hardcoded type list that would drift.
+      const canonical = ACTION_MAP_[type];
+      if (isValidDate_(d) && canonical && !isOpenAction_(canonical)) months.add(monthKey_(d));
     }
   }
   if (!months.size) {
@@ -263,60 +268,40 @@ function buildFIFO() {
   const lrA = shA.getLastRow();
   if (lrA < 2) return;
 
-  const rows = shA.getRange(2, 1, lrA - 1, 5).getValues();
-  const events = [];
-  for (const r of rows) {
-    const d = parseDate_(r[0], CFG.DEFAULT_YEAR);
-    const sym = String(r[1] || "").trim().toUpperCase();
-    const type = normalizeTradeType_(r[2]);
-    const qty = Math.abs(num_(r[3]));
-    const price = num_(r[4]);
-    if (!isValidDate_(d)) continue;
-    if (!sym) continue;
-    if (type !== "BUY" && type !== "SELL") continue;
-    if (!qty || !price) continue;
-    events.push({ d, sym, type, qty, price, row: events.length });
-  }
+  // MATAN FIX (2026-08-01): this used to be a second, independent FIFO
+  // matcher -- long-only, and it silently dropped every row whose action
+  // wasn't literally "BUY" or "SELL" (short sales, and the STC/BTO/STO/BTC
+  // options terminology that started appearing in the export). That's why
+  // this sheet's own "נטו אחרי מס" total could disagree with the website:
+  // two different engines computing two different things. Reusing
+  // normalizeOperations_/applyFIFO_ (the exact engine behind the website,
+  // already extended for long/short/options and already tested against
+  // this account's real history) means this sheet and the website can
+  // never drift apart again -- one computation, two renderings.
+  const data = shA.getDataRange().getValues();
+  const norm = normalizeOperations_(data);
+  const fifo = applyFIFO_(norm.ops);
 
-  events.sort((a, b) => {
-    const diff = a.d.getTime() - b.d.getTime();
-    if (diff !== 0) return diff;
-    if (a.type !== b.type) return a.type === "BUY" ? -1 : 1;
-    return a.row - b.row;
+  const out = fifo.trades.map(t => {
+    const buyDate  = parseDate_(t.buy_date, CFG.DEFAULT_YEAR);
+    const sellDate = parseDate_(t.sell_date, CFG.DEFAULT_YEAR);
+    const fxMonth  = fxMap.get(t.month) || CFG.FX_FALLBACK;
+    const netIls   = round2_(t.net * fxMonth);
+    return [t.symbol, buyDate, sellDate, t.qty, t.buy_price, t.sell_price,
+            t.cost, t.gross, t.tax, t.net, netIls, t.pct, "'" + t.month, fxMonth, t.hold_days];
   });
 
-  const queues = {};
-  const out = [];
-
-  for (const ev of events) {
-    if (!queues[ev.sym]) queues[ev.sym] = [];
-    if (ev.type === "BUY") {
-      queues[ev.sym].push({ d: ev.d, qty: ev.qty, price: ev.price });
-      continue;
-    }
-    let remaining = ev.qty;
-    while (remaining > 0) {
-      if (!queues[ev.sym].length) {
-        const fxMonth = getFxByMonth_(ev.d, fxMap);
-        out.push([ev.sym, "", ev.d, remaining, "", ev.price, "", "", "", "", "", "", "'" + monthKey_(ev.d), fxMonth, ""]);
-        break;
-      }
-      const lot = queues[ev.sym][0];
-      const used = Math.min(remaining, lot.qty);
-      const buyP = lot.price, sellP = ev.price;
-      const cost = round2_(used * buyP);
-      const gross = round2_((sellP - buyP) * used);
-      const tax = round2_(gross * CFG.TAX);
-      const net = round2_(gross - tax);
-      const fxMonth = getFxByMonth_(ev.d, fxMap);
-      const netIls = round2_(net * fxMonth);
-      const pct = buyP ? round2_(((sellP - buyP) / buyP) * 100) : "";
-      const holdDays = Math.max(0, Math.round((ev.d.getTime() - lot.d.getTime()) / (24 * 60 * 60 * 1000)));
-      out.push([ev.sym, lot.d, ev.d, used, buyP, sellP, cost, gross, tax, net, netIls, pct, "'" + monthKey_(ev.d), fxMonth, holdDays]);
-      lot.qty = roundQty_(lot.qty - used);
-      remaining = roundQty_(remaining - used);
-      if (lot.qty <= 0) queues[ev.sym].shift();
-    }
+  // Same "never silently drop" principle as the website: rows the engine
+  // couldn't parse or FIFO-match (bad data, or a close exceeding the open
+  // lot at that point in the ledger) surface as a toast instead of just
+  // vanishing from this sheet the way an unrecognized action type used to.
+  const allErrors = norm.errors.concat(fifo.errors);
+  if (allErrors.length) {
+    const preview = allErrors.slice(0, 3).map(e => 'שורה ' + e.row + ' (' + e.symbol + ')').join(', ');
+    SpreadsheetApp.getActive().toast(
+      allErrors.length + ' שורות מ"פעולות" לא נכללו בחישוב: ' + preview + (allErrors.length > 3 ? '...' : '') + ' — בדוק את היומן.',
+      'FIFO PRO', 15
+    );
   }
 
   if (!out.length) return;
