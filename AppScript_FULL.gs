@@ -2379,23 +2379,54 @@ function handleSetGoal_(goal) {
 // either can be re-enabled later without rewriting the logic.
 
 const SUSPICIOUS_DAY_CHANGE_RATIO = 0.35;
+const PRICE_CACHE_TTL_SEC = 30; // CLAUDE.md: "Avoid unnecessary API calls — cache prices for 30s"
 
-// ── Main price handler: Finnhub only ──────────────────────────────
+// ── Main price handler: Finnhub only, with a 30s server-side cache ────────
+// Without this, every 15s poll from every open tab/device hit Finnhub fresh
+// — on the free tier (60 req/min) that's a real way to get rate-limited
+// (Finnhub 429s) with more than one tab open or a larger watchlist, which
+// surfaces to the user as the "Offline" indicator with no obvious cause.
+// CacheService is shared across all users/executions of this script, so a
+// symbol fetched by one poll is reused by every other poll (any tab, any
+// device) for the next 30s — this is what actually cuts outbound Finnhub
+// calls, not just a per-request optimization. Only successful lookups are
+// cached; a failure is retried on the very next poll instead of "sticking"
+// as a cached error for 30s.
 function handleGetPrices_(symbolsCsv) {
   const symbols = String(symbolsCsv || '').split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
   if (!symbols.length) return jsonOut_({ ok: true, prices: {}, _debug: 'no symbols' });
 
-  const prices = fetchFinnhubPrices_(symbols);
-  symbols.forEach(sym => {
-    if (!prices[sym]) prices[sym] = { ok: false, error: prices._error || 'Finnhub: no data for ' + sym, source: 'Finnhub' };
+  const cache      = CacheService.getScriptCache();
+  const cacheKeys  = symbols.map(s => 'price_' + s);
+  const cacheHits  = cache.getAll(cacheKeys);
+
+  const prices  = {};
+  const toFetch = [];
+  symbols.forEach((sym, i) => {
+    const hit = cacheHits[cacheKeys[i]];
+    if (hit) {
+      try { prices[sym] = JSON.parse(hit); return; } catch (e) { /* fall through to re-fetch */ }
+    }
+    toFetch.push(sym);
   });
-  delete prices._error;
+
+  if (toFetch.length) {
+    const fetched = fetchFinnhubPrices_(toFetch);
+    const toCache = {};
+    toFetch.forEach(sym => {
+      if (!fetched[sym]) fetched[sym] = { ok: false, error: fetched._error || 'Finnhub: no data for ' + sym, source: 'Finnhub' };
+      prices[sym] = fetched[sym];
+      if (fetched[sym].ok) toCache[cacheKeys[symbols.indexOf(sym)]] = JSON.stringify(fetched[sym]);
+    });
+    if (Object.keys(toCache).length) cache.putAll(toCache, PRICE_CACHE_TTL_SEC);
+  }
 
   const okCount = symbols.filter(s => prices[s] && prices[s].ok).length;
   const _debug = {
     requested: symbols.length,
     ok:        okCount,
     failed:    symbols.length - okCount,
+    fromCache: symbols.length - toFetch.length,
     sources:   symbols.reduce((acc, s) => { acc[s] = (prices[s] && prices[s].source) || 'none'; return acc; }, {})
   };
   Logger.log('getPrices: ' + JSON.stringify(_debug));
