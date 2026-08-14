@@ -1,3 +1,12 @@
 .DS_Store
 Thumbs.db
 *.zip
+
+# test-data/: only the two reviewed-synthetic fixtures may be tracked.
+# Real exports/snapshots (bank/broker CSV downloads, live sheet dumps)
+# must never be committed here — see test-data/README.md and
+# docs/MAINTENANCE.md. This is deny-by-default: any other CSV dropped
+# into test-data/ is ignored unless explicitly allow-listed below.
+test-data/*.csv
+!test-data/matan_operations_snapshot.csv
+!test-data/matan_legacy_fifo_tab.csv
