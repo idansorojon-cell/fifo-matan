@@ -40,11 +40,35 @@ schedule regardless of whether anything was just changed.
 - `python3 tools/dry_run.py test-data/matan_operations_snapshot.csv` —
   `accountingMatches: true`, `fifoErrors: []`.
 - `python3 tools/reconcile_legacy.py` — mismatch pattern unchanged from
-  the known baseline (rounding + the documented pre-existing 1-day
-  legacy-tab date offset + the legacy tab's lack of an options
-  multiplier). A *new* kind of mismatch is a signal to investigate.
+  the known synthetic-fixture baseline (see `test-data/README.md`): 4
+  legacy rows, 2 matched (1 clean, 1 with the deliberate rounding
+  mismatch), 2 unmatched (option + short, by design — the legacy tab is
+  long-stock-only). A *different* pattern is a signal to investigate.
 - Service worker cache version (`CACHE_NAME` in `sw.js`) bumped if any
   `index.html`/`css/*`/`js/*` file changed — otherwise returning users
   stay on stale cached code indefinitely.
 - Manual smoke test of the live site after the GitHub Pages deploy
   settles (~30–90s after push).
+
+## Data privacy (standing rule)
+
+Real trading/financial data must never be committed to this repository
+— it's public. This applies to any production or user financial data,
+not just `test-data/`.
+
+- **Test fixtures must be synthetic.** `test-data/matan_operations_snapshot.csv`
+  and `test-data/matan_legacy_fifo_tab.csv` are 100% invented (see
+  `test-data/README.md`) — this was not always true; real trading data
+  lived at those exact paths from 2026-07-06 until it was removed and
+  purged from git history via `git filter-repo` + force-push on
+  2026-08-14. Never reintroduce real records at these paths.
+- **Real exports stay local and ignored.** `.gitignore` denies every
+  `test-data/*.csv` by default, explicitly allow-listing only the two
+  synthetic filenames above. A real bank/broker export or live-sheet
+  snapshot dropped into `test-data/` for local debugging is
+  automatically ignored — leave it that way, don't force-add it.
+- **Privacy review before committing anything under `test-data/`.**
+  Before `git add`-ing a new or changed file there, confirm by hand
+  that it contains no real symbol/date/price/quantity/P&L data, no
+  account or tax identifiers, and no names/contact info. If in doubt,
+  don't commit it — ask first.
