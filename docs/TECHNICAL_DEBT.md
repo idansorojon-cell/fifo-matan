@@ -1,5 +1,13 @@
 # FIFO PRO — Technical Debt & Known Limitations
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. In particular, the "Security" section below
+> claiming `AUTH_DISABLED = true` does NOT apply here — Matan's project
+> has `AUTH_DISABLED = false` (auth enforced) in both code and the live
+> deployment, confirmed 2026-08-14. Treat every other item below as
+> unverified for `fifo-matan` until checked against the actual code.
+
 ## Tax calculation — losing trades were not receiving their 25% tax offset (FIXED, redeployed and confirmed live by the trader)
 
 **Found via a full-history audit** (user noticed May 2026's net total didn't

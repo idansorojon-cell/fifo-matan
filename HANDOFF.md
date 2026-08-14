@@ -1,5 +1,16 @@
 # FIFO PRO — Session Handoff
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since to reflect Matan-specific work (long/short + options
+> support, auth re-enabled, Matan's own Apps Script deployment, etc.). In
+> particular, the repo name (`fifo-pro-v2`) and `AUTH_DISABLED = true`
+> claims below do NOT apply here — Matan's project has
+> `AUTH_DISABLED = false` (auth enforced) in both code and the live
+> deployment, confirmed 2026-08-14. Treat every other specific claim below
+> as unverified for `fifo-matan` until checked against the actual code.
+> For Matan-specific session history, see the git log (`9108e54` onward).
+
 _Paste this entire document into a new Claude Code session to resume work
 with full context. Detailed docs live in `/docs` — this file is the
 condensed, self-contained summary._

@@ -1,5 +1,11 @@
 # FIFO PRO — Architecture
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. The folder structure below is still accurate, but
+> treat any specific feature/state claim as unverified for `fifo-matan`
+> until checked against the actual code.
+
 ## Folder structure
 
 ```

@@ -1,5 +1,13 @@
 # FIFO PRO — Roadmap / Outstanding Work
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. In particular, the "Restore authentication" P0 item
+> below does NOT apply here — Matan's project already has
+> `AUTH_DISABLED = false` (auth enforced) in both code and the live
+> deployment, confirmed 2026-08-14. Treat every other item below as
+> unverified for `fifo-matan` until checked against the actual code.
+
 Grouped by priority. Nothing here has been started unless explicitly noted.
 
 ## P0 — Security / correctness (do before wider use)

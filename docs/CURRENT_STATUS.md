@@ -1,5 +1,13 @@
 # FIFO PRO — Current Status
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. In particular, this file's repo name (`fifo-pro-v2`)
+> and its `AUTH_DISABLED = true` claim do NOT apply here — Matan's project
+> has `AUTH_DISABLED = false` (auth enforced) in both code and the live
+> deployment, confirmed 2026-08-14. Treat every other specific claim below
+> as unverified for `fifo-matan` until checked against the actual code.
+
 _Last updated: 2026-07-05, Functional Cleanup session (Settings audit +
 Delete Position). Re-verified live state directly (git, GitHub Pages
 deployment API, and the live Apps Script backend) rather than trusting

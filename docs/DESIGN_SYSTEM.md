@@ -1,5 +1,10 @@
 # FIFO PRO — Design System
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. Treat any specific claim below as unverified for
+> `fifo-matan` until checked against the actual code.
+
 This is the single source of truth for FIFO PRO's visual language as it's
 being rebuilt into a premium, professional trading platform (see
 HANDOFF.md for the product mandate). Every design-facing phase should

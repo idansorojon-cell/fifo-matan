@@ -1,5 +1,11 @@
 # FIFO PRO — Current Features
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since to reflect Matan-specific work (long/short + options
+> support, auth re-enabled, etc.). Treat any specific feature claim below
+> as unverified for `fifo-matan` until checked against the actual code.
+
 Organized by navigation category, matching the app's own hub structure.
 
 ## דשבורד (Dashboard) category

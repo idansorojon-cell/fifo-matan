@@ -1,5 +1,12 @@
 # FIFO PRO — AI Context (read this before making changes)
 
+> **⚠️ Stale for this fork.** Copied verbatim from Idan's original FIFO PRO
+> project when `fifo-matan` was created (commit `9108e54`, 2026-07-05) and
+> never updated since. Treat any specific claim below (including auth
+> state) as unverified for `fifo-matan` until checked against the actual
+> code — in particular, Matan's project has `AUTH_DISABLED = false` (auth
+> enforced), confirmed 2026-08-14, which may contradict this file.
+
 This file exists so a new AI session doesn't have to rediscover decisions,
 gotchas, and conventions the hard way. If you're an AI assistant working on
 this repo, read this fully before editing anything.
