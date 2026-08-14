@@ -1,0 +1,12 @@
+[
+  {"scene": 1, "duration_sec": 6, "action": "מסך ההתחברות פתוח, מלא שם משתמש וסיסמה", "narration_he": "זה FIFO PRO. יומן המסחר האישי שלך.", "caption": "FIFO PRO"},
+  {"scene": 2, "duration_sec": 4, "action": "לוחצים כניסה. המסך עובר ל-Cockpit", "narration_he": "מתחברים, וכל הנתונים שלך כבר מחכים.", "caption": ""},
+  {"scene": 3, "duration_sec": 8, "action": "מסך הבית (Cockpit). מצביעים על כרטיס השווי הכולל", "narration_he": "כאן אתה רואה את התמונה הכוללת. כמה הרווחת, ומה קורה עכשיו.", "caption": "שווי כולל"},
+  {"scene": 4, "duration_sec": 7, "action": "לוחצים דשבורד. מצביעים על גרף ה-Equity Curve", "narration_he": "והגרפים מראים איך הרווח שלך התפתח לאורך זמן.", "caption": "Equity Curve"},
+  {"scene": 5, "duration_sec": 8, "action": "לוחצים מסחר, ואז היסטוריית עסקאות", "narration_he": "כל עסקה שעשית, במקום אחד.", "caption": "היסטוריית עסקאות"},
+  {"scene": 6, "duration_sec": 10, "action": "זום-אין על שורה עם תגית Long ועל שורה עם תגית Short", "narration_he": "כל עסקה מסומנת — Long אם קנית רגיל, Short אם מכרת בחסר.", "caption": "Long / Short"},
+  {"scene": 7, "duration_sec": 8, "action": "זום-אין על שורה עם תגית Option", "narration_he": "וגם חוזי אופציות מחושבים אוטומטית, נכון.", "caption": "Option"},
+  {"scene": 8, "duration_sec": 8, "action": "לוחצים מסחר, ואז פוזיציות פתוחות", "narration_he": "פה רואים מה עוד פתוח אצלך, במחיר חי.", "caption": "מחיר חי"},
+  {"scene": 9, "duration_sec": 8, "action": "לוחצים בינה מלאכותית, ואז AI Coach", "narration_he": "ויש גם מאמן אישי, שמזהה דפוסים במסחר שלך.", "caption": "AI Coach"},
+  {"scene": 10, "duration_sec": 5, "action": "חזרה ל-Cockpit", "narration_he": "זהו. עכשיו תורך.", "caption": ""}
+]
